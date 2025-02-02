@@ -1,12 +1,6 @@
 from pydantic import BaseModel
 from typing import List
-from datetime import date
-
-
-class GameEvent(BaseModel):
-    inning: str
-    title: str
-    description: str
+from datetime import datetime
 
 
 class GameSummary(BaseModel):
@@ -15,9 +9,16 @@ class GameSummary(BaseModel):
     ja: str
 
 
+class GameEvent(BaseModel):
+    inning: str
+    title: str
+    description: str
+
+
 class Game(BaseModel):
     id: str
-    date: date
+    date: datetime
+    venue: str
     awayTeam: str
     homeTeam: str
     awayScore: int
@@ -30,3 +31,10 @@ class Game(BaseModel):
     winningPitcher: str
     summary: GameSummary
     events: List[GameEvent]
+
+
+class GameList(BaseModel):
+    games: List[Game]
+    page: int
+    total: int
+    has_more: bool
