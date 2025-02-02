@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # Google Cloud Configuration
     GOOGLE_CLOUD_PROJECT: str
     GOOGLE_APPLICATION_CREDENTIALS: str
+    GOOGLE_API_KEY: str
 
     # MLB API Configuration
     MLB_API_BASE_URL: str
