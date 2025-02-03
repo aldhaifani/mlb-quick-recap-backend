@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api.v1.games import router as games_router
-from app.api.v1.recaps import router as recaps_router
 
 app = FastAPI(
     title="MLB Quick Recap API",
@@ -23,9 +22,6 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(games_router, prefix=f"/api/{settings.API_VERSION}", tags=["games"])
-app.include_router(
-    recaps_router, prefix=f"/api/{settings.API_VERSION}", tags=["recaps"]
-)
 
 
 @app.get("/health")

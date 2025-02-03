@@ -44,8 +44,6 @@ class Game(BaseModel):
     winning_pitcher: Optional[str] = None
     summary: Optional[Dict[str, str]] = None
     events: Optional[List[GameEvent]] = None
-    recap: Optional[str] = None
-    translations: Optional[dict[str, str]] = None
     cached_at: Optional[datetime] = None
 
 

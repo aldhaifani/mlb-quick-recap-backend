@@ -31,19 +31,3 @@ async def get_games(
         return games
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/games/{game_id}/stats")
-async def get_game_stats(game_id: int):
-    """Get detailed statistics for a specific game."""
-    try:
-        # Try to get game stats
-        game_stats = await mlb_client.get_game_stats(game_id)
-        if not game_stats:
-            raise HTTPException(
-                status_code=404, detail=f"Game stats not found for game ID: {game_id}"
-            )
-
-        return game_stats
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
