@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
-# Make port 8080 available to the world outside this container
+# Make port 8080 available
 EXPOSE 8080
 
 # Run the application with Gunicorn
