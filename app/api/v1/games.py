@@ -11,21 +11,21 @@ redis_manager = RedisManager()
 
 @router.get("/games", response_model=GameList)
 async def get_games(
-    team: str = Query(..., description="Team name or abbreviation"),
     season: int = Query(..., ge=2008, le=2024, description="Season year"),
+    team_id: Optional[int] = Query(None, description="Team ID to filter games"),
 ):
-    """Get all games for a specific team in a given season."""
+    """Get all games for a given season, optionally filtered by team ID."""
     try:
         # Check Redis cache first
-        cached_games = await redis_manager.get_games(season, team)
+        cached_games = await redis_manager.get_games(season)
         if cached_games:
             return cached_games
 
         # If not in cache, fetch from MLB API
-        games = await mlb_client.get_games(team, season)
+        games = await mlb_client.get_games(season, team_id)
 
         # Cache results
-        await redis_manager.set_games(games, season, team)
+        await redis_manager.set_games(games, season)
 
         return games
     except Exception as e:

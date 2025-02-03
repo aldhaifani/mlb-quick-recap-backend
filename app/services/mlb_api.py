@@ -10,18 +10,20 @@ class MLBAPIClient:
         self.base_url = settings.MLB_API_BASE_URL
         self.gumbo_url = settings.MLB_GUMBO_API_BASE_URL
 
-    async def get_games(self, team: str, season: int) -> GameList:
-        """Fetch all games for a specific team in a given season."""
+    async def get_games(self, season: int, team_id: Optional[int] = None) -> GameList:
+        """Fetch all games for a given season, optionally filtered by team ID."""
         # Build the API URL with season date range
         url = f"{self.base_url}/schedule"
         params = {
             "sportId": settings.MLB_SPORT_ID,
             "startDate": f"{season}-01-01",
             "endDate": f"{season}-12-31",
-            "gameType": MLBGameType.REGULAR,
+            "gameType": "R",
             "hydrate": "team,venue",
-            "teamId": await self._get_team_id(team),
         }
+
+        if team_id:
+            params["teamId"] = team_id
 
         # Make the API request
         response = requests.get(url, params=params)
@@ -37,20 +39,6 @@ class MLBAPIClient:
                     games.append(game)
 
         return GameList(total_items=len(games), games=games)
-
-    async def _get_team_id(self, team_name: str) -> Optional[int]:
-        """Get team ID from team name or abbreviation."""
-        url = f"{self.base_url}/teams"
-        params = {"sportId": settings.MLB_SPORT_ID}
-
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-
-        team_name = team_name.lower()
-        for team in response.json().get("teams", []):
-            if team_name in [team["name"].lower(), team["abbreviation"].lower()]:
-                return team["id"]
-        return None
 
     async def _process_game(self, game_data: dict) -> Optional[Game]:
         """Process raw game data into Game model."""
