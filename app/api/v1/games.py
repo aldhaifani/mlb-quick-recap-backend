@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Query, HTTPException
-from typing import List, Optional
 from app.services.mlb_api import MLBAPIClient
 from app.cache.redis_manager import RedisManager
 from app.models.game import GameList

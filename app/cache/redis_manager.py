@@ -1,9 +1,9 @@
-from typing import Optional, Any
+from typing import Optional
 from datetime import datetime
 import json
 from redis import Redis
 from app.config import settings
-from app.models.game import Game, GameList
+from app.models.game import GameList
 
 
 class RedisManager:

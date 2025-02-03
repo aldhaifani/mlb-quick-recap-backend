@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional
 from app.services.mlb_api import MLBAPIClient
 from app.services.recap_service import RecapService
-from app.models.game import Game
 
 router = APIRouter()
 mlb_client = MLBAPIClient()

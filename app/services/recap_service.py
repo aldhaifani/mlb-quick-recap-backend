@@ -1,5 +1,4 @@
-from typing import Optional, Dict
-from datetime import datetime
+from typing import Optional
 import google.generativeai as genai
 from app.config import settings
 from app.models.game import Game

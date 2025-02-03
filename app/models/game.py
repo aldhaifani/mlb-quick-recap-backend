@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel
 from app.config import MLBGameType
 
@@ -22,6 +22,12 @@ class GameScore(BaseModel):
     home: int
 
 
+class GameEvent(BaseModel):
+    inning: str
+    title: str
+    description: str
+
+
 class Game(BaseModel):
     id: int
     game_type: MLBGameType
@@ -30,6 +36,14 @@ class Game(BaseModel):
     teams: dict[str, Team]
     score: GameScore
     venue: str
+    away_hits: Optional[int] = None
+    home_hits: Optional[int] = None
+    away_errors: Optional[int] = None
+    home_errors: Optional[int] = None
+    top_performer: Optional[str] = None
+    winning_pitcher: Optional[str] = None
+    summary: Optional[Dict[str, str]] = None
+    events: Optional[List[GameEvent]] = None
     recap: Optional[str] = None
     translations: Optional[dict[str, str]] = None
     cached_at: Optional[datetime] = None

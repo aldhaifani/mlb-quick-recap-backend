@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta
-from typing import Optional, List
+from datetime import datetime
+from typing import Optional
 import requests
-from app.config import settings, MLBGameType
+from app.config import settings
 from app.models.game import Game, GameStatus, Team, GameScore, GameList
 
 
@@ -21,7 +21,7 @@ class MLBAPIClient:
             "startDate": f"{season}-01-01",
             "endDate": f"{season}-12-31",
             "gameType": "R",
-            "hydrate": "team,venue",
+            "hydrate": "team,venue,linescore",
             "teamId": team_id,
         }
 
@@ -52,6 +52,35 @@ class MLBAPIClient:
     async def _process_game(self, game_data: dict) -> Optional[Game]:
         """Process raw game data into Game model."""
         try:
+            # Get linescore data for hits and errors
+            linescore = game_data.get("linescore", {})
+            away_hits = linescore.get("teams", {}).get("away", {}).get("hits")
+            home_hits = linescore.get("teams", {}).get("home", {}).get("hits")
+            away_errors = linescore.get("teams", {}).get("away", {}).get("errors")
+            home_errors = linescore.get("teams", {}).get("home", {}).get("errors")
+
+            # Get decisions data for winning pitcher
+            decisions = game_data.get("decisions", {})
+            winning_pitcher = decisions.get("winner", {}).get("fullName")
+
+            # Determine top performer based on game stats
+            top_performer = None
+            if game_data.get("teams", {}).get("away", {}).get(
+                "score", 0
+            ) > game_data.get("teams", {}).get("home", {}).get("score", 0):
+                team_data = game_data.get("teams", {}).get("away", {})
+            else:
+                team_data = game_data.get("teams", {}).get("home", {})
+
+            # Get the player with the most hits or RBIs as top performer
+            if team_data.get("batters"):
+                max_hits = 0
+                for batter in team_data.get("batters", []):
+                    batter_stats = batter.get("stats", {}).get("batting", {})
+                    if batter_stats.get("hits", 0) > max_hits:
+                        max_hits = batter_stats.get("hits", 0)
+                        top_performer = batter.get("person", {}).get("fullName")
+
             return Game(
                 id=game_data["gamePk"],
                 game_type=game_data["gameType"],
@@ -79,6 +108,12 @@ class MLBAPIClient:
                     home=game_data["teams"]["home"]["score"],
                 ),
                 venue=game_data["venue"]["name"],
+                away_hits=away_hits,
+                home_hits=home_hits,
+                away_errors=away_errors,
+                home_errors=home_errors,
+                winning_pitcher=winning_pitcher,
+                top_performer=top_performer,
             )
         except KeyError:
             return None
