@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
-import requests
+import aiohttp
+import asyncio
 from app.config import settings
 from app.models.game import Game, GameStatus, Team, GameScore, GameList
 
@@ -26,17 +27,19 @@ class MLBAPIClient:
         }
 
         # Make the API request
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, timeout=30) as response:
+                response.raise_for_status()
+                data = await response.json()
 
         # Process and format the response
-        games = []
+        game_tasks = []
         for date in data.get("dates", []):
             for game_data in date.get("games", []):
-                game = await self._process_game(game_data)
-                if game:
-                    games.append(game)
+                game_tasks.append(self._process_game(game_data))
+
+        # Process games concurrently
+        games = [game for game in await asyncio.gather(*game_tasks) if game]
 
         # Sort games by date in descending order (latest first)
         games.sort(key=lambda x: x.date, reverse=True)
@@ -52,6 +55,16 @@ class MLBAPIClient:
     async def _process_game(self, game_data: dict) -> Optional[Game]:
         """Process raw game data into Game model."""
         try:
+            # Get detailed game data from GUMBO API
+            game_details = await self.get_game_details(game_data["gamePk"])
+            if not game_details:
+                return None
+
+            live_data = game_details.get("liveData", {})
+            boxscore = live_data.get("boxscore", {})
+            plays = live_data.get("plays", {})
+            decisions = live_data.get("decisions", {})
+
             # Get linescore data for hits and errors
             linescore = game_data.get("linescore", {})
             away_hits = linescore.get("teams", {}).get("away", {}).get("hits")
@@ -60,26 +73,43 @@ class MLBAPIClient:
             home_errors = linescore.get("teams", {}).get("home", {}).get("errors")
 
             # Get decisions data for winning pitcher
-            decisions = game_data.get("decisions", {})
             winning_pitcher = decisions.get("winner", {}).get("fullName")
 
             # Determine top performer based on game stats
             top_performer = None
-            if game_data.get("teams", {}).get("away", {}).get(
-                "score", 0
-            ) > game_data.get("teams", {}).get("home", {}).get("score", 0):
-                team_data = game_data.get("teams", {}).get("away", {})
-            else:
-                team_data = game_data.get("teams", {}).get("home", {})
+            max_hits = 0
+            max_rbi = 0
 
-            # Get the player with the most hits or RBIs as top performer
-            if team_data.get("batters"):
-                max_hits = 0
-                for batter in team_data.get("batters", []):
-                    batter_stats = batter.get("stats", {}).get("batting", {})
-                    if batter_stats.get("hits", 0) > max_hits:
-                        max_hits = batter_stats.get("hits", 0)
-                        top_performer = batter.get("person", {}).get("fullName")
+            # Process both teams' batting stats
+            for team_data in boxscore.get("teams", {}).values():
+                for player_id, player in team_data.get("players", {}).items():
+                    batting_stats = player.get("stats", {}).get("batting", {})
+                    hits = batting_stats.get("hits", 0)
+                    rbi = batting_stats.get("rbi", 0)
+
+                    # Update top performer based on hits and RBIs
+                    if hits > max_hits or (hits == max_hits and rbi > max_rbi):
+                        max_hits = hits
+                        max_rbi = rbi
+                        top_performer = player.get("person", {}).get("fullName")
+
+            # Process game events
+            events = []
+            for play in plays.get("allPlays", []):
+                if play.get("about", {}).get("isComplete", False) and (
+                    play.get("result", {}).get("rbi", 0) > 0
+                    or play.get("result", {}).get("event")
+                    in ["Home Run", "Triple", "Double"]
+                ):
+                    events.append(
+                        {
+                            "inning": str(play.get("about", {}).get("inning")),
+                            "title": play.get("result", {}).get("event"),
+                            "description": play.get("result", {}).get(
+                                "description", ""
+                            ),
+                        }
+                    )
 
             return Game(
                 id=game_data["gamePk"],
@@ -114,6 +144,7 @@ class MLBAPIClient:
                 home_errors=home_errors,
                 winning_pitcher=winning_pitcher,
                 top_performer=top_performer,
+                events=events,
             )
         except KeyError:
             return None
@@ -123,10 +154,11 @@ class MLBAPIClient:
         url = f"{self.gumbo_url}/game/{game_id}/feed/live"
 
         try:
-            response = requests.get(url)
-            response.raise_for_status()
-            return response.json()
-        except (requests.RequestException, ValueError):
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=30) as response:
+                    response.raise_for_status()
+                    return await response.json()
+        except (aiohttp.ClientError, ValueError, asyncio.TimeoutError):
             return None
 
     async def get_game_stats(self, game_id: int) -> Optional[dict]:
