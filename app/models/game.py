@@ -1,40 +1,40 @@
-from pydantic import BaseModel
-from typing import List
 from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel
+from app.config import MLBGameType
 
 
-class GameSummary(BaseModel):
-    en: str
-    es: str
-    ja: str
+class Team(BaseModel):
+    id: int
+    name: str
+    abbreviation: str
 
 
-class GameEvent(BaseModel):
-    inning: str
-    title: str
-    description: str
+class GameStatus(BaseModel):
+    abstract_game_state: str
+    detailed_state: str
+    status_code: str
+    is_final: bool
+
+
+class GameScore(BaseModel):
+    away: int
+    home: int
 
 
 class Game(BaseModel):
-    id: str
+    id: int
+    game_type: MLBGameType
     date: datetime
+    status: GameStatus
+    teams: dict[str, Team]
+    score: GameScore
     venue: str
-    awayTeam: str
-    homeTeam: str
-    awayScore: int
-    homeScore: int
-    awayHits: int
-    homeHits: int
-    awayErrors: int
-    homeErrors: int
-    topPerformer: str
-    winningPitcher: str
-    summary: GameSummary
-    events: List[GameEvent]
+    recap: Optional[str] = None
+    translations: Optional[dict[str, str]] = None
+    cached_at: Optional[datetime] = None
 
 
 class GameList(BaseModel):
+    total_items: int
     games: List[Game]
-    page: int
-    total: int
-    has_more: bool

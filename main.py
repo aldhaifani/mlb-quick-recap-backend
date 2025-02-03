@@ -1,9 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.config import get_settings
-from app.api.v1.endpoints import games
-
-settings = get_settings()
+from app.config import settings
+from app.api.v1.games import router as games_router
+from app.api.v1.recaps import router as recaps_router
 
 app = FastAPI(
     title="MLB Quick Recap API",
@@ -22,8 +21,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(games.router, prefix=f"/api/{settings.API_VERSION}", tags=["games"])
+# Include API routers
+app.include_router(games_router, prefix=f"/api/{settings.API_VERSION}", tags=["games"])
+app.include_router(
+    recaps_router, prefix=f"/api/{settings.API_VERSION}", tags=["recaps"]
+)
 
 
 @app.get("/health")
@@ -33,3 +35,9 @@ async def health_check():
         "environment": settings.ENVIRONMENT,
         "version": settings.API_VERSION,
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
