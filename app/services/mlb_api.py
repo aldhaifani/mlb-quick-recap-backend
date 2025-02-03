@@ -10,8 +10,10 @@ class MLBAPIClient:
         self.base_url = settings.MLB_API_BASE_URL
         self.gumbo_url = settings.MLB_GUMBO_API_BASE_URL
 
-    async def get_games(self, season: int, team_id: Optional[int] = None) -> GameList:
-        """Fetch all games for a given season, optionally filtered by team ID."""
+    async def get_games(
+        self, season: int, team_id: int, page: int = 1, per_page: int = 10
+    ) -> GameList:
+        """Fetch all games for a given season and team ID with pagination."""
         # Build the API URL with season date range
         url = f"{self.base_url}/schedule"
         params = {
@@ -20,10 +22,8 @@ class MLBAPIClient:
             "endDate": f"{season}-12-31",
             "gameType": "R",
             "hydrate": "team,venue",
+            "teamId": team_id,
         }
-
-        if team_id:
-            params["teamId"] = team_id
 
         # Make the API request
         response = requests.get(url, params=params)
@@ -38,7 +38,16 @@ class MLBAPIClient:
                 if game:
                     games.append(game)
 
-        return GameList(total_items=len(games), games=games)
+        # Sort games by date in descending order (latest first)
+        games.sort(key=lambda x: x.date, reverse=True)
+
+        # Calculate pagination
+        total_items = len(games)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_games = games[start_idx:end_idx]
+
+        return GameList(total_items=total_items, games=paginated_games)
 
     async def _process_game(self, game_data: dict) -> Optional[Game]:
         """Process raw game data into Game model."""

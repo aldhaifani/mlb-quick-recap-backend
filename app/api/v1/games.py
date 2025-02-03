@@ -12,9 +12,11 @@ redis_manager = RedisManager()
 @router.get("/games", response_model=GameList)
 async def get_games(
     season: int = Query(..., ge=2008, le=2024, description="Season year"),
-    team_id: Optional[int] = Query(None, description="Team ID to filter games"),
+    team_id: int = Query(..., description="Team ID to filter games"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(10, ge=1, le=100, description="Items per page"),
 ):
-    """Get all games for a given season, optionally filtered by team ID."""
+    """Get all games for a given season and team ID with pagination."""
     try:
         # Check Redis cache first
         cached_games = await redis_manager.get_games(season)
@@ -22,7 +24,7 @@ async def get_games(
             return cached_games
 
         # If not in cache, fetch from MLB API
-        games = await mlb_client.get_games(season, team_id)
+        games = await mlb_client.get_games(season, team_id, page, per_page)
 
         # Cache results
         await redis_manager.set_games(games, season)
