@@ -2,96 +2,101 @@ from typing import Optional
 import google.generativeai as genai
 from app.config import settings
 from app.models.game import Game
+import asyncio
+import time
+from collections import deque
 
 
 class RecapService:
     def __init__(self):
-        genai.configure(api_key=settings.GOOGLE_GEMINI_API_KEY)
-        self.model = genai.GenerativeModel("gemini-pro")
+        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.generation_config = {
+            "temperature": 0.2,
+            "top_p": 0.7,
+            "max_output_tokens": 256,
+            "candidate_count": 1,
+        }
+
+    def _check_rate_limit(self) -> bool:
+        current_time = time.time()
+        self._request_timestamps = [
+            ts
+            for ts in self._request_timestamps
+            if current_time - ts <= self._time_window
+        ]
+        return len(self._request_timestamps) < self._rate_limit
+
+    async def _wait_for_rate_limit(self):
+        while not self._check_rate_limit():
+            await asyncio.sleep(0.1)  # Reduced sleep time
+
+    def _switch_model(self):
+        self._current_model_index = (self._current_model_index + 1) % len(self.models)
+        self.model = self.models[self._current_model_index]
 
     async def generate_recap(
         self, game: Game, game_stats: dict, target_language: str = "en"
     ) -> Optional[str]:
-        """Generate a natural language recap of the game using Google's Gemini AI model."""
-        try:
-            # Prepare the game data for the prompt
-            prompt = self._create_recap_prompt(game, game_stats)
+        prompt = self._create_recap_prompt(game, game_stats)
 
-            # Generate the recap using Gemini
-            response = await self.model.generate_content_async(prompt)
+        try:
+            response = await self.model.generate_content_async(
+                prompt,
+                generation_config=self.generation_config,
+            )
 
             if not response.text:
-                return None
+                return self._generate_fallback_recap(game)
 
             recap = response.text.strip()
-
-            # If target language is not English, translate the recap
             if target_language != "en":
-                translated_recap = await self._translate_recap(recap, target_language)
-                return translated_recap
-
+                return await self._translate_recap(recap, target_language)
             return recap
 
         except Exception as e:
-            print(f"Error generating recap: {str(e)}")
-            return None
+            print(f"Error generating recap: {e}")
+            return self._generate_fallback_recap(game)
 
     def _create_recap_prompt(self, game: Game, game_stats: dict) -> str:
-        """Create a structured prompt for the AI model to generate the game recap."""
-        # Extract relevant information
         home_team = game.teams["home"].name
         away_team = game.teams["away"].name
-        home_score = game.score.home
-        away_score = game.score.away
-        venue = game.venue
-        date = game.date.strftime("%B %d, %Y")
+        winner = "home" if game.score.home > game.score.away else "away"
+        winner_team = game.teams[winner].name
+        winner_score = game.score.home if winner == "home" else game.score.away
+        loser_team = game.teams["away" if winner == "home" else "home"].name
+        loser_score = game.score.away if winner == "home" else game.score.home
 
-        # Get team stats
         team_stats = game_stats.get("team_stats", {})
         key_plays = game_stats.get("key_plays", [])
         decisions = game_stats.get("decisions", {})
-        game_info = game_stats.get("game_info", {})
 
-        # Construct the prompt
-        prompt = f"""Generate a concise and engaging MLB game recap for the following game:
+        prompt = f"""MLB Game Recap:
+{winner_team} defeated {loser_team} {winner_score}-{loser_score}
 
-Game Details:
-- Date: {date}
-- Venue: {venue}
-- Final Score: {away_team} {away_score}, {home_team} {home_score}
-- Attendance: {game_info.get("attendance", "N/A")}
-- Game Duration: {game_info.get("game_time", "N/A")} minutes
-
-Key Statistics:
+Key Stats:
 {self._format_team_stats(team_stats)}
 
-Key Plays:
+Winning Pitcher: {decisions.get("winner", "N/A")}
+
+Highlights:
 {self._format_key_plays(key_plays)}
 
-Game Decisions:
-- Winning Pitcher: {decisions.get("winner", "N/A")}
-- Losing Pitcher: {decisions.get("loser", "N/A")}
-- Save: {decisions.get("save", "N/A")}
-
-Please write a natural, engaging recap that highlights the most important aspects of the game, including key performances, turning points, and notable achievements. Focus on telling a compelling story while maintaining accuracy and including relevant statistics."""
+Provide a concise 2-3 sentence recap focusing on the final score and key performances."""
 
         return prompt
 
     def _format_team_stats(self, team_stats: dict) -> str:
-        """Format team statistics for the prompt."""
         formatted_stats = []
         for team_id, stats in team_stats.items():
             batting = stats["batting"]
             pitching = stats["pitching"]
 
-            # Add team batting stats
             formatted_stats.append(f"Team {team_id} Batting:")
             formatted_stats.append(f"- Hits: {batting['hits']}")
             formatted_stats.append(f"- Runs: {batting['runs']}")
             formatted_stats.append(f"- Strikeouts: {batting['strikeouts']}")
             formatted_stats.append(f"- Walks: {batting['walks']}")
 
-            # Add notable batting performances
             for highlight in batting["batting_highlights"]:
                 if highlight["hits"] > 0:
                     formatted_stats.append(
@@ -99,7 +104,6 @@ Please write a natural, engaging recap that highlights the most important aspect
                         f"{highlight['home_runs']} HR, {highlight['rbi']} RBI"
                     )
 
-            # Add team pitching stats
             formatted_stats.append(f"\nTeam {team_id} Pitching:")
             for highlight in pitching["pitching_highlights"]:
                 formatted_stats.append(
@@ -110,7 +114,6 @@ Please write a natural, engaging recap that highlights the most important aspect
         return "\n".join(formatted_stats)
 
     def _format_key_plays(self, key_plays: list) -> str:
-        """Format key plays for the prompt."""
         formatted_plays = []
         for play in key_plays:
             inning = play["inning"]
@@ -123,7 +126,6 @@ Please write a natural, engaging recap that highlights the most important aspect
         )
 
     async def _translate_recap(self, recap: str, target_language: str) -> Optional[str]:
-        """Translate the game recap to the target language using Google Cloud Translate."""
         try:
             from google.cloud import translate_v2 as translate
 
@@ -137,3 +139,12 @@ Please write a natural, engaging recap that highlights the most important aspect
         except Exception as e:
             print(f"Error translating recap: {str(e)}")
             return None
+
+    def _generate_fallback_recap(self, game: Game) -> str:
+        winner = "home" if game.score.home > game.score.away else "away"
+        winner_team = game.teams[winner].name
+        winner_score = game.score.home if winner == "home" else game.score.away
+        loser_team = game.teams["away" if winner == "home" else "home"].name
+        loser_score = game.score.away if winner == "home" else game.score.home
+
+        return f"The {winner_team} defeated the {loser_team} with a score of {winner_score}-{loser_score} at {game.venue}."

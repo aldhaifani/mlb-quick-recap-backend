@@ -26,9 +26,9 @@ class RedisManager:
                 decode_responses=True,
             )
 
-    async def get_games(self, season: int) -> Optional[GameList]:
+    async def get_games(self, season: int, team_id: int) -> Optional[GameList]:
         """Retrieve games from cache based on season."""
-        cache_key = f"games:{season}"
+        cache_key = f"games:{season}-team:{team_id}"
         data = self._redis.get(cache_key)
 
         if not data:
@@ -40,9 +40,9 @@ class RedisManager:
         except Exception:
             return None
 
-    async def set_games(self, games: GameList, season: int) -> bool:
+    async def set_games(self, games: GameList, season: int, team_id: int) -> bool:
         """Store games in cache with the specified TTL."""
-        cache_key = f"games:{season}"
+        cache_key = f"games:{season}-team:{team_id}"
         try:
             # Update cached_at timestamp for each game
             for game in games.games:

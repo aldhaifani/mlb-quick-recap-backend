@@ -18,7 +18,7 @@ async def get_games(
     """Get all games for a given season and team ID with pagination."""
     try:
         # Check Redis cache first
-        cached_games = await redis_manager.get_games(season)
+        cached_games = await redis_manager.get_games(season, team_id)
         if cached_games:
             return cached_games
 
@@ -26,7 +26,7 @@ async def get_games(
         games = await mlb_client.get_games(season, team_id, page, per_page)
 
         # Cache results
-        await redis_manager.set_games(games, season)
+        await redis_manager.set_games(games, season, team_id)
 
         return games
     except Exception as e:
