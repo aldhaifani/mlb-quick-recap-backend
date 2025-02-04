@@ -1,10 +1,8 @@
 from typing import Optional
 import google.generativeai as genai
-from app.config import settings
 from app.models.game import Game
 import asyncio
 import time
-from collections import deque
 from collections import deque
 
 
