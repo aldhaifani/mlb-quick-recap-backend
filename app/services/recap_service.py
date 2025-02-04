@@ -5,34 +5,36 @@ from app.models.game import Game
 import asyncio
 import time
 from collections import deque
+from collections import deque
 
 
 class RecapService:
     def __init__(self):
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.model = genai.GenerativeModel("gemini-pro")
         self.generation_config = {
-            "temperature": 0.2,
-            "top_p": 0.7,
-            "max_output_tokens": 256,
+            "temperature": 0.3,
+            "top_p": 0.9,
+            "max_output_tokens": 512,
             "candidate_count": 1,
         }
+        self._request_timestamps = deque(maxlen=60)
+        self._rate_limit = 60
+        self._time_window = 60
 
     def _check_rate_limit(self) -> bool:
         current_time = time.time()
-        self._request_timestamps = [
-            ts
-            for ts in self._request_timestamps
-            if current_time - ts <= self._time_window
-        ]
+        # Clean up old timestamps
+        while (
+            self._request_timestamps
+            and current_time - self._request_timestamps[0] > self._time_window
+        ):
+            self._request_timestamps.popleft()
         return len(self._request_timestamps) < self._rate_limit
 
     async def _wait_for_rate_limit(self):
         while not self._check_rate_limit():
-            await asyncio.sleep(0.1)  # Reduced sleep time
-
-    def _switch_model(self):
-        self._current_model_index = (self._current_model_index + 1) % len(self.models)
-        self.model = self.models[self._current_model_index]
+            await asyncio.sleep(1)  # Wait for 1 second before checking again
+        self._request_timestamps.append(time.time())
 
     async def generate_recap(
         self, game: Game, game_stats: dict, target_language: str = "en"
@@ -40,6 +42,7 @@ class RecapService:
         prompt = self._create_recap_prompt(game, game_stats)
 
         try:
+            await self._wait_for_rate_limit()
             response = await self.model.generate_content_async(
                 prompt,
                 generation_config=self.generation_config,

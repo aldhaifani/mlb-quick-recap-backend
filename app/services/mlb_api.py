@@ -5,6 +5,7 @@ import asyncio
 from app.config import settings
 from app.models.game import Game, GameStatus, Team, GameScore, GameList
 from app.services.gemini_service import GeminiService
+from app.cache.redis_manager import RedisManager
 
 
 class MLBAPIClient:
@@ -29,6 +30,12 @@ class MLBAPIClient:
         self, season: int, team_id: int, page: int = 1, per_page: int = 10
     ) -> GameList:
         """Fetch all games for a given season and team ID with pagination."""
+        # Check cache first
+        redis_manager = RedisManager()
+        cached_games = await redis_manager.get_games(season, team_id)
+        if cached_games:
+            return cached_games
+
         url = f"{self.base_url}/schedule"
         params = {
             "sportId": settings.MLB_SPORT_ID,
@@ -44,21 +51,22 @@ class MLBAPIClient:
             response.raise_for_status()
             data = await response.json()
 
-        # Process games in batches
+        # Process games in parallel with improved batching
         all_games = []
         game_tasks = []
+        semaphore = asyncio.Semaphore(5)  # Limit concurrent API calls
+
+        async def process_game_with_semaphore(game_data):
+            async with semaphore:
+                return await self._process_game(game_data)
+
         for date in data.get("dates", []):
             for game_data in date.get("games", []):
-                game_tasks.append(self._process_game(game_data))
-                if len(game_tasks) >= self.batch_size:
-                    batch_results = await asyncio.gather(*game_tasks)
-                    all_games.extend([game for game in batch_results if game])
-                    game_tasks = []
+                game_tasks.append(process_game_with_semaphore(game_data))
 
-        # Process remaining games
-        if game_tasks:
-            batch_results = await asyncio.gather(*game_tasks)
-            all_games.extend([game for game in batch_results if game])
+        # Process all games concurrently
+        batch_results = await asyncio.gather(*game_tasks)
+        all_games.extend([game for game in batch_results if game])
 
         # Sort games by date in descending order
         all_games.sort(key=lambda x: x.date, reverse=True)
